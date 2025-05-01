@@ -124,6 +124,7 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
     if (showCommentPopup && inputRef.current) {
       inputRef.current.focus();
     }
+    
   }, [showCommentPopup]);
 
   useEffect(() => {

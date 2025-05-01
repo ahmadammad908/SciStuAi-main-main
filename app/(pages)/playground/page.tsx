@@ -499,7 +499,7 @@ export default function PlaygroundPage() {
 
                         {(message as CustomMessage).imageUrl && (
                           <div className="rounded-[20px] overflow-hidden">
-                            <img
+                            <Image
                               src={(message as CustomMessage).imageUrl || ""}
                               alt="Uploaded content"
                               className="max-w-full h-auto max-h-64 object-contain"
@@ -570,7 +570,7 @@ export default function PlaygroundPage() {
       {imagePreview && (
         <div className="relative mb-2 flex justify-center">
           <div className="relative rounded-lg overflow-hidden max-w-full">
-            <img
+            <Image
               src={imagePreview}
               alt="Preview"
               className="max-w-full h-auto max-h-40 md:max-h-64 object-contain"
