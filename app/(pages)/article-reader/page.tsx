@@ -6,11 +6,14 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/esm/Page/TextLayer.css';
 import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
 import { Button } from '@/components/ui/button';
-import { Sparkles, BookText, FileText, Menu, X, Share } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Sparkles, BookText, FileText, Menu, X, Share, XCircle, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import ModeToggle from '@/components/mode-toggle';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 
 // Set up PDF.js worker
 if (typeof window !== 'undefined') {
@@ -19,6 +22,17 @@ if (typeof window !== 'undefined') {
     import.meta.url
   ).toString();
 }
+
+// Utility to convert data URL to File
+const dataUrlToFile = (dataUrl: string, fileName: string, mimeType: string): File => {
+  const byteString = atob(dataUrl.split(',')[1]);
+  const arrayBuffer = new ArrayBuffer(byteString.length);
+  const uint8Array = new Uint8Array(arrayBuffer);
+  for (let i = 0; i < byteString.length; i++) {
+    uint8Array[i] = byteString.charCodeAt(i);
+  }
+  return new File([arrayBuffer], fileName, { type: mimeType });
+};
 
 interface Comment {
   id: string;
@@ -36,7 +50,9 @@ interface Article {
   content: string;
   comments: Comment[];
   file: File;
+  fileDataUrl?: string;
   numPages?: number;
+  timestamp?: Date;
 }
 
 interface Folder {
@@ -56,22 +72,23 @@ const calculatePopupPosition = (
   containerRect: DOMRect,
   scrollLeft: number,
   scrollTop: number,
-  pageOffset: number
+  pageOffset: number,
+  isMobile: boolean
 ) => {
-  const popupWidth = 200;
+  const popupWidth = 240;
   const popupHeight = 60;
 
-  let x = selectionPosition.x + selectionPosition.width / 2;
-  let y = selectionPosition.y + pageOffset - popupHeight - 10;
+  let x = selectionPosition.x + selectionPosition.width / 2 - popupWidth / 2;
+  let y = selectionPosition.y + pageOffset - popupHeight - (isMobile ? 16 : 8); // Extra offset for mobile
 
   const minX = 10;
   const maxX = containerRect.width - popupWidth - 10;
   x = Math.max(minX, Math.min(x, maxX));
 
   const minY = scrollTop + 10;
-  const maxY = scrollTop + containerRect.height - popupHeight - 10;
+  const maxY = scrollTop + containerRect.height - popupHeight - (isMobile ? 60 : 10); // Account for mobile toolbar
   if (y < minY) {
-    y = selectionPosition.y + pageOffset + selectionPosition.height + 10;
+    y = selectionPosition.y + pageOffset + selectionPosition.height + (isMobile ? 16 : 8);
   }
   y = Math.max(minY, Math.min(y, maxY));
 
@@ -99,8 +116,9 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
   const [containerWidth, setContainerWidth] = useState<number>(0);
   const pdfContainerRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
 
   const allComments = pendingComment ? [...article.comments, pendingComment] : article.comments;
 
@@ -121,10 +139,9 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
   }, [allComments]);
 
   useEffect(() => {
-    if (showCommentPopup && inputRef.current) {
-      inputRef.current.focus();
+    if (showCommentPopup && textareaRef.current) {
+      textareaRef.current.focus();
     }
-    
   }, [showCommentPopup]);
 
   useEffect(() => {
@@ -170,56 +187,74 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
     };
 
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => document.addEventListener('mousedown', handleClickOutside);
   }, [showSelectionPopup]);
 
-  const handleTextSelection = (event: React.MouseEvent) => {
+  const handleTextSelection = (event: React.MouseEvent | React.TouchEvent) => {
     if (manualCommentMode || (popupRef.current && popupRef.current.contains(event.target as Node))) {
       return;
     }
 
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0 || selection.toString().trim() === '') {
-      setSelectedText('');
-      setSelectionPosition(null);
-      setShowSelectionPopup(false);
-      setTextSelectionError(
-        'No text selected. This PDF may not contain selectable text (e.g., scanned document). Click "Add Manual Comment" to place a comment anywhere.'
-      );
-      return;
-    }
+    // Delay processing to allow mobile selection to stabilize
+    setTimeout(() => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0 || selection.toString().trim() === '') {
+        setSelectedText('');
+        setSelectionPosition(null);
+        setShowSelectionPopup(false);
+        setTextSelectionError(
+          'No text selected. This PDF may not contain selectable text (e.g., scanned document). Click "Add Manual Comment" to place a comment anywhere.'
+        );
+        return;
+      }
 
-    const range = selection.getRangeAt(0);
-    const rect = range.getBoundingClientRect();
-    const container = pdfContainerRef.current;
-    const pageElement = pageRefs.current[currentPage - 1];
+      const range = selection.getRangeAt(0);
+      const rect = range.getBoundingClientRect();
+      const container = pdfContainerRef.current;
+      const pageElement = pageRefs.current[currentPage - 1];
 
-    if (container && pageElement && rect.width > 0 && rect.height > 0) {
-      const pageRect = pageElement.getBoundingClientRect();
+      let position: { x: number; y: number; width: number; height: number } | null = null;
 
-      const position = {
-        x: rect.left - pageRect.left,
-        y: rect.top - pageRect.top,
-        width: rect.width,
-        height: rect.height,
-      };
+      if (container && pageElement && rect.width > 0 && rect.height > 0) {
+        const pageRect = pageElement.getBoundingClientRect();
+        position = {
+          x: rect.left - pageRect.left,
+          y: rect.top - pageRect.top,
+          width: rect.width,
+          height: rect.height,
+        };
+      } else if (event.type === 'touchend') {
+        // Fallback for mobile: use touch coordinates
+        const touch = (event as React.TouchEvent).changedTouches[0];
+        if (container && pageElement) {
+          const pageRect = pageElement.getBoundingClientRect();
+          position = {
+            x: touch.clientX - pageRect.left,
+            y: touch.clientY - pageRect.top,
+            width: 50, // Default size
+            height: 20,
+          };
+        }
+      }
 
-      setSelectionPosition(position);
-      setSelectedText(selection.toString());
-      setShowSelectionPopup(true);
-      setTextSelectionError(null);
-      console.log('Text selected:', selection.toString(), 'Position:', position, 'Page:', currentPage);
-    } else {
-      setSelectedText('');
-      setSelectionPosition(null);
-      setShowSelectionPopup(false);
-      setTextSelectionError(
-        'Unable to determine selection position. Click "Add Manual Comment" to place a comment anywhere.'
-      );
-    }
+      if (position) {
+        setSelectionPosition(position);
+        setSelectedText(selection.toString());
+        setShowSelectionPopup(true);
+        setTextSelectionError(null);
+        console.log('Text selected:', selection.toString(), 'Position:', position, 'Page:', currentPage);
+      } else {
+        setSelectedText('');
+        setSelectionPosition(null);
+        setShowSelectionPopup(false);
+        setTextSelectionError(
+          'Unable to determine selection position. Click "Add Manual Comment" to place a comment anywhere.'
+        );
+      }
+    }, 100); // Small delay for mobile selection
   };
 
-  const handleManualCommentClick = (event: React.MouseEvent) => {
+  const handleManualCommentClick = (event: React.MouseEvent | React.TouchEvent) => {
     if (!manualCommentMode || (popupRef.current && popupRef.current.contains(event.target as Node))) {
       return;
     }
@@ -229,10 +264,20 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
 
     if (container && pageElement) {
       const pageRect = pageElement.getBoundingClientRect();
+      let clientX: number, clientY: number;
+
+      if (event.type === 'touchend') {
+        const touch = (event as React.TouchEvent).changedTouches[0];
+        clientX = touch.clientX;
+        clientY = touch.clientY;
+      } else {
+        clientX = (event as React.MouseEvent).clientX;
+        clientY = (event as React.MouseEvent).clientY;
+      }
 
       const position = {
-        x: event.clientX - pageRect.left,
-        y: event.clientY - pageRect.top,
+        x: clientX - pageRect.left,
+        y: clientY - pageRect.top,
         width: 50,
         height: 20,
       };
@@ -259,7 +304,7 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
     if (!selectedText || !selectionPosition) return;
 
     const newComment: Comment = {
-      id: uuidv4(),
+      id: pendingComment?.id || uuidv4(),
       text: 'Analyzing...',
       isAI: true,
       timestamp: new Date(),
@@ -271,10 +316,11 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
     setPendingComment(newComment);
     setAiAnalysisPending(true);
     setShowSelectionPopup(false);
+    setNewCommentText('Analyzing...');
+    setShowCommentPopup(true);
     console.log('AI analysis started:', newComment);
 
     try {
-      // Call the Gemini API via /api/analyze
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: {
@@ -289,26 +335,23 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
 
       const { analysis } = await response.json();
 
-      // Update the pending comment with the Gemini analysis
       const updatedComment: Comment = {
         ...newComment,
         text: analysis,
       };
 
       setPendingComment(updatedComment);
-      setNewCommentText(analysis); // Prefill the comment textarea
-      setShowCommentPopup(true); // Show the comment popup for editing
+      setNewCommentText(analysis);
       setAiAnalysisPending(false);
-      console.log('Gemini AI analysis completed:', updatedComment);
+      console.log('AI analysis completed:', updatedComment);
     } catch (error) {
-      console.error('Error during Gemini AI analysis:', error);
+      console.error('Error during AI analysis:', error);
       const errorComment: Comment = {
         ...newComment,
         text: 'Failed to analyze text. Please try again.',
       };
       setPendingComment(errorComment);
       setNewCommentText('Failed to analyze text. Please try again.');
-      setShowCommentPopup(true);
       setAiAnalysisPending(false);
     }
   };
@@ -320,16 +363,20 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
           onCommentCreate(pendingComment);
           console.log('AI comment added:', pendingComment);
         }
+        resetCommentState();
         break;
       case 'regenerate':
-        handleAIAnalysisStart(); // Re-run AI analysis
         console.log('AI comment regenerating');
+        handleAIAnalysisStart();
         break;
       case 'cancel':
         console.log('AI comment cancelled');
+        resetCommentState();
         break;
     }
+  };
 
+  const resetCommentState = () => {
     setAiAnalysisPending(false);
     setPendingComment(null);
     window.getSelection()?.removeAllRanges();
@@ -402,269 +449,347 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
     setHoveredComment(null);
   };
 
-  const handlePopupClick = (e: React.MouseEvent) => {
+  const handlePopupClick = (e: React.MouseEvent | React.TouchEvent) => {
     e.stopPropagation();
   };
 
+  const handleClearSelection = () => {
+    setShowSelectionPopup(false);
+    setSelectedText('');
+    setSelectionPosition(null);
+    window.getSelection()?.removeAllRanges();
+  };
+
   return (
-    <div className="flex h-[calc(100vh-72px)] relative">
-      <div
-        ref={pdfContainerRef}
-        className="flex-1 overflow-auto relative box-border max-w-full max-h-[calc(100vh-72px)] p-4"
-        onMouseUp={manualCommentMode ? handleManualCommentClick : handleTextSelection}
-      >
-        <Document
-          file={article.file}
-          onLoadSuccess={onDocumentLoadSuccess}
-          loading={<div className="p-4 text-center">Loading PDF...</div>}
-          error={<div className="p-4 text-center text-red-500">Failed to load PDF.</div>}
+    <TooltipProvider>
+      <div className="flex h-[calc(100vh-72px)] relative">
+        <div
+          ref={pdfContainerRef}
+          className="flex-1 overflow-auto relative box-border max-w-full max-h-[calc(100vh-72px)] p-4"
+          onMouseUp={handleTextSelection}
+          onTouchEnd={handleTextSelection}
         >
-          {Array.from(new Array(numPages), (_, index) => {
-            const pageNumber = index + 1;
-            return (
-              <div
-                key={`page_${pageNumber}`}
-                className="relative flex justify-center bg-white dark:bg-zinc-800 shadow-sm mb-4 mx-auto border border-zinc-200 dark:border-zinc-700 max-w-[800px]"
-                ref={(el) => {
-                  pageRefs.current[index] = el;
-                }}
-                onMouseUp={manualCommentMode ? handleManualCommentClick : handleTextSelection}
-              >
-                <Page
-                  pageNumber={pageNumber}
-                  width={containerWidth ? Math.min(containerWidth - 40, 800) : 600}
-                  loading={<div className="p-4 text-center">Loading page {pageNumber}...</div>}
-                  onLoadSuccess={() => console.log(`Page ${pageNumber} loaded`)}
-                  className="pdf-page"
-                />
-
-                {allComments
-                  .filter((comment) => comment.pageNumber === pageNumber && comment.position)
-                  .map((comment) => (
-                    <div
-                      key={comment.id}
-                      className={`absolute ${
-                        hoveredComment?.id === comment.id ? 'bg-yellow-400' : 'bg-yellow-300'
-                      } bg-opacity-50 border border-yellow-500 rounded-sm transition-colors duration-200`}
-                      style={{
-                        left: comment.position!.x,
-                        top: comment.position!.y,
-                        width: comment.position!.width,
-                        height: comment.position!.height,
-                        zIndex: 10,
-                      }}
-                      onMouseEnter={() => handleMouseEnterComment(comment)}
-                      onMouseLeave={handleMouseLeaveComment}
-                    />
-                  ))}
-
-                {selectedText && selectionPosition && currentPage === pageNumber && (
-                  <div
-                    className="absolute bg-blue-200 bg-opacity-50 border border-blue-400 rounded-sm transition-opacity duration-200"
-                    style={{
-                      left: selectionPosition.x,
-                      top: selectionPosition.y,
-                      width: selectionPosition.width,
-                      height: selectionPosition.height,
-                      zIndex: 15,
-                    }}
+          <Document
+            file={article.file}
+            onLoadSuccess={onDocumentLoadSuccess}
+            loading={<div className="p-4 text-center">Loading PDF...</div>}
+            error={<div className="p-4 text-center text-red-500">Failed to load PDF.</div>}
+          >
+            {Array.from(new Array(numPages), (_, index) => {
+              const pageNumber = index + 1;
+              return (
+                <div
+                  key={`page_${pageNumber}`}
+                  className="relative flex justify-center bg-white dark:bg-zinc-800 shadow-sm mb-4 mx-auto border border-zinc-200 dark:border-zinc-700 max-w-[800px] rounded-lg"
+                  ref={(el) => {
+                    pageRefs.current[index] = el;
+                  }}
+                  onMouseUp={manualCommentMode ? handleManualCommentClick : handleTextSelection}
+                  onTouchEnd={manualCommentMode ? handleManualCommentClick : handleTextSelection}
+                >
+                  <Page
+                    pageNumber={pageNumber}
+                    width={containerWidth ? Math.min(containerWidth - 40, 800) : 600}
+                    loading={<div className="p-4 text-center">Loading page {pageNumber}...</div>}
+                    onLoadSuccess={() => console.log(`Page ${pageNumber} loaded`)}
+                    className="pdf-page"
                   />
-                )}
-              </div>
-            );
-          })}
-        </Document>
 
-        {manualCommentMode && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '10px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 25,
-            }}
-          >
-            <div className="bg-blue-100 text-blue-700 p-2 rounded shadow-lg max-w-sm">
-              Click on the PDF to place a comment. Click Cancel to exit manual mode.
+                  {allComments
+                    .filter((comment) => comment.pageNumber === pageNumber && comment.position)
+                    .map((comment) => (
+                      <Tooltip key={comment.id}>
+                        <TooltipTrigger asChild>
+                          <div
+                            className={`absolute ${
+                              hoveredComment?.id === comment.id ? 'bg-yellow-400' : 'bg-yellow-300'
+                            } bg-opacity-40 border border-yellow-500 rounded-sm transition-colors duration-200 hover:bg-yellow-400/50`}
+                            style={{
+                              left: comment.position!.x,
+                              top: comment.position!.y,
+                              width: comment.position!.width,
+                              height: comment.position!.height,
+                              zIndex: 10,
+                            }}
+                            onMouseEnter={() => handleMouseEnterComment(comment)}
+                            onMouseLeave={handleMouseLeaveComment}
+                            onTouchStart={() => handleMouseEnterComment(comment)}
+                          />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant="outline"
+                              className={
+                                comment.isAI
+                                  ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300'
+                                  : 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300'
+                              }
+                            >
+                              {comment.isAI ? 'AI Comment' : 'Your Note'}
+                            </Badge>
+                            <p className="text-sm">{comment.text.slice(0, 50)}...</p>
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    ))}
+
+                  {selectedText && selectionPosition && currentPage === pageNumber && (
+                    <div
+                      className="absolute bg-blue-200 bg-opacity-40 border border-blue-400 rounded-sm transition-opacity duration-200"
+                      style={{
+                        left: selectionPosition.x,
+                        top: selectionPosition.y,
+                        width: selectionPosition.width,
+                        height: selectionPosition.height,
+                        zIndex: 15,
+                      }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </Document>
+
+          {manualCommentMode && (
+            <div
+              style={{
+                position: 'absolute',
+                top: '12px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 25,
+              }}
+            >
+              <Card className="bg-blue-50 dark:bg-blue-900/50 border-blue-200 dark:border-blue-700 p-3 rounded-lg shadow-md">
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  Tap on the PDF to place a comment. Tap Cancel to exit.
+                </p>
+              </Card>
             </div>
-          </div>
-        )}
+          )}
 
-        {textSelectionError && (
-          <div
-            style={{
-              position: 'absolute',
-              top: '10px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 25,
-            }}
-          >
-            <div className="bg-red-100 text-red-700 p-2 rounded shadow-lg max-w-sm flex items-center gap-2">
-              <span>{textSelectionError}</span>
-              <Button size="sm" onClick={toggleManualCommentMode}>
-                Add Manual Comment
-              </Button>
+          
+
+          {showSelectionPopup && selectedText && selectionPosition && !showCommentPopup && !aiAnalysisPending && !manualCommentMode && (
+            <div
+              ref={popupRef}
+              style={{
+                position: 'absolute',
+                left: `${calculatePopupPosition(
+                  selectionPosition,
+                  pdfContainerRef.current!.getBoundingClientRect(),
+                  pdfContainerRef.current!.scrollLeft,
+                  pdfContainerRef.current!.scrollTop,
+                  pageRefs.current[currentPage - 1]?.offsetTop || 0,
+                  isMobile
+                ).x}px`,
+                top: `${calculatePopupPosition(
+                  selectionPosition,
+                  pdfContainerRef.current!.getBoundingClientRect(),
+                  pdfContainerRef.current!.scrollLeft,
+                  pdfContainerRef.current!.scrollTop,
+                  pageRefs.current[currentPage - 1]?.offsetTop || 0,
+                  isMobile
+                ).y}px`,
+                zIndex: 20,
+              }}
+              className="animate-in fade-in duration-200"
+            >
+              <Card className="p-2 shadow-lg border dark:border-zinc-700 bg-white dark:bg-zinc-800">
+                <CardContent className="flex gap-2 p-1">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        onClick={handleAddComment}
+                        onTouchStart={handleAddComment}
+                        className="bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                      >
+                        Add Note
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Add a manual note to this selection</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={handleAIAnalysisStart}
+                        onTouchStart={handleAIAnalysisStart}
+                        className="bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors"
+                      >
+                        AI Analysis
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Generate AI-powered analysis for this selection</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={handleClearSelection}
+                        onTouchStart={handleClearSelection}
+                        className="text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                      >
+                        <XCircle className="w-4 h-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Clear selection</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </CardContent>
+              </Card>
             </div>
-          </div>
-        )}
+          )}
 
-        {showSelectionPopup && selectedText && selectionPosition && !showCommentPopup && !aiAnalysisPending && !manualCommentMode && (
-          <div
-            ref={popupRef}
-            style={{
-              position: 'absolute',
-              left: `${calculatePopupPosition(
-                selectionPosition,
-                pdfContainerRef.current!.getBoundingClientRect(),
-                pdfContainerRef.current!.scrollLeft,
-                pdfContainerRef.current!.scrollTop,
-                pageRefs.current[currentPage - 1]?.offsetTop || 0
-              ).x}px`,
-              top: `${calculatePopupPosition(
-                selectionPosition,
-                pdfContainerRef.current!.getBoundingClientRect(),
-                pdfContainerRef.current!.scrollLeft,
-                pdfContainerRef.current!.scrollTop,
-                pageRefs.current[currentPage - 1]?.offsetTop || 0
-              ).y}px`,
-              zIndex: 20,
-            }}
-            className="animate-fade-in"
-          >
-            <div className="flex gap-2 bg-white dark:bg-zinc-800 p-3 rounded-lg shadow-xl border dark:border-zinc-700 backdrop-blur-sm bg-opacity-90 dark:bg-opacity-90 transition-all duration-200 hover:shadow-2xl">
-              <Button
-                size="sm"
-                onClick={handleAddComment}
-                className="bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-md px-4 py-2 transition-colors duration-200"
-              >
-                Add Note
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={handleAIAnalysisStart}
-                className="bg-green-500 hover:bg-green-600 text-white font-semibold rounded-md px-4 py-2 transition-colors duration-200"
-              >
-                AI Analysis
-              </Button>
+          
+          {showCommentPopup && selectionPosition && (
+            <div
+              ref={popupRef}
+              onClick={handlePopupClick}
+              onTouchStart={handlePopupClick}
+              style={{
+                position: 'absolute',
+                left: `${selectionPosition.x + selectionPosition.width / 2}px`,
+                top: `${selectionPosition.y + (pageRefs.current[currentPage - 1]?.offsetTop || 0) - (isMobile ? 16 : 8)}px`,
+                transform: 'translate(-50%, -100%)',
+                zIndex: 20,
+              }}
+              className="animate-in fade-in duration-200"
+            >
+              <Card className="w-80 shadow-lg border dark:border-zinc-700 bg-white dark:bg-zinc-800">
+                <CardContent className="p-4">
+                  <Textarea
+                    ref={textareaRef}
+                    value={newCommentText}
+                    onChange={(e) => setNewCommentText(e.target.value)}
+                    placeholder="Enter your comment or AI analysis"
+                    className="mb-3 min-h-[100px] resize-none border-zinc-300 dark:border-zinc-600 focus:ring-2 focus:ring-blue-500 rounded-md"
+                    onClick={handlePopupClick}
+                    onTouchStart={handlePopupClick}
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleSaveComment}
+                      onTouchStart={handleSaveComment}
+                      className="bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+                    >
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleCancelComment}
+                      onTouchStart={handleCancelComment}
+                      className="border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-md"
+                    >
+                      Cancel
+                    </Button>
+                    {pendingComment && pendingComment.isAI && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleFinalizeComment('regenerate')}
+                        onTouchStart={() => handleFinalizeComment('regenerate')}
+                        className="bg-yellow-600 hover:bg-yellow-700 text-white rounded-md"
+                      >
+                        Regenerate
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-          </div>
-        )}
+          )}
 
-        {showCommentPopup && selectionPosition && (
-          <div
-            ref={popupRef}
-            onClick={handlePopupClick}
-            onMouseDown={handlePopupClick}
-            style={{
-              position: 'absolute',
-              left: `${selectionPosition.x + selectionPosition.width / 2}px`,
-              top: `${selectionPosition.y + (pageRefs.current[currentPage - 1]?.offsetTop || 0)}px`,
-              transform: 'translate(-50%, -100%)',
-              zIndex: 20,
-            }}
-            className="animate-fade-in"
-          >
-            <div className="bg-white dark:bg-zinc-800 p-4 rounded-lg shadow-xl border dark:border-zinc-700 w-72 backdrop-blur-sm bg-opacity-90 dark:bg-opacity-90">
-              <Input
-                ref={inputRef}
-                value={newCommentText}
-                onChange={(e) => setNewCommentText(e.target.value)}
-                placeholder="Enter your comment"
-                className="mb-3 border-zinc-300 dark:border-zinc-600 focus:ring-2 focus:ring-blue-500 rounded-md"
-                onClick={handlePopupClick}
-                onMouseDown={handlePopupClick}
-              />
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={handleSaveComment}
-                  className="bg-blue-500 hover:bg-blue-600 text-white rounded-md"
-                >
-                  Save
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleCancelComment}
-                  className="border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-md"
-                >
-                  Cancel
-                </Button>
-                {pendingComment && pendingComment.isAI && (
+          {aiAnalysisPending && !showCommentPopup && selectionPosition && (
+            <div
+              style={{
+                position: 'absolute',
+                left: `${selectionPosition.x + selectionPosition.width / 2}px`,
+                top: `${selectionPosition.y + (pageRefs.current[currentPage - 1]?.offsetTop || 0) - (isMobile ? 16 : 8)}px`,
+                transform: 'translate(-50%, -100%)',
+                zIndex: 20,
+              }}
+              className="animate-in fade-in duration-200"
+            >
+              <Card className="p-2 shadow-lg border dark:border-zinc-700 bg-white dark:bg-zinc-800">
+                <CardContent className="flex gap-2 items-center p-1">
+                  <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full" />
+                  <span className="text-sm text-zinc-600 dark:text-zinc-300">Analyzing...</span>
                   <Button
                     size="sm"
-                    variant="secondary"
-                    onClick={() => handleFinalizeComment('regenerate')}
-                    className="bg-yellow-500 hover:bg-yellow-600 text-white rounded-md"
+                    variant="outline"
+                    onClick={() => handleFinalizeComment('cancel')}
+                    onTouchStart={() => handleFinalizeComment('cancel')}
+                    className="border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-md"
                   >
-                    Regenerate
+                    Cancel
                   </Button>
-                )}
-              </div>
+                </CardContent>
+              </Card>
             </div>
-          </div>
-        )}
+          )}
 
-        {aiAnalysisPending && !showCommentPopup && selectionPosition && (
-          <div
-            style={{
-              position: 'absolute',
-              left: `${selectionPosition.x + selectionPosition.width / 2}px`,
-              top: `${selectionPosition.y + (pageRefs.current[currentPage - 1]?.offsetTop || 0)}px`,
-              transform: 'translate(-50%, -100%)',
-              zIndex: 20,
-            }}
-            className="animate-fade-in"
-          >
-            <div className="flex gap-2 items-center bg-white dark:bg-zinc-800 p-3 rounded-lg shadow-xl border dark:border-zinc-700 backdrop-blur-sm bg-opacity-90 dark:bg-opacity-90">
-              <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleFinalizeComment('cancel')}
-                className="border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-md"
-              >
-                Cancel
-              </Button>
+          {hoveredComment && hoveredComment.position && (
+            <div
+              style={{
+                position: 'absolute',
+                left: `${hoveredComment.position.x + hoveredComment.position.width / 2}px`,
+                top: `${
+                  hoveredComment.position.y +
+                  hoveredComment.position.height +
+                  (pageRefs.current[hoveredComment.pageNumber! - 1]?.offsetTop || 0) + 10
+                }px`,
+                transform: 'translateX(-50%)',
+                zIndex: 30,
+                maxWidth: '300px',
+              }}
+              className="animate-in fade-in duration-200"
+            >
+              <Card className="shadow-md border dark:border-zinc-700 bg-white dark:bg-zinc-800">
+                <CardContent className="p-3">
+                  <div className="mb-2">
+                    <Badge
+                      variant="outline"
+                      className={
+                        hoveredComment.isAI
+                          ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300'
+                          : 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300'
+                      }
+                    >
+                      {hoveredComment.isAI ? 'AI Comment' : 'Your Note'}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-zinc-800 dark:text-zinc-200">{hoveredComment.text}</p>
+                  {hoveredComment.selectedText && (
+                    <div className="mt-2">
+                      <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">
+                        Selected Text:
+                      </p>
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
+                        {hoveredComment.selectedText.length > 100
+                          ? `${hoveredComment.selectedText.slice(0, 100)}...`
+                          : hoveredComment.selectedText}
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </div>
-          </div>
-        )}
-
-        {hoveredComment && hoveredComment.position && (
-          <div
-            style={{
-              position: 'absolute',
-              left: `${hoveredComment.position.x + hoveredComment.position.width / 2}px`,
-              top: `${
-                hoveredComment.position.y +
-                hoveredComment.position.height +
-                (pageRefs.current[hoveredComment.pageNumber! - 1]?.offsetTop || 0) +
-                5
-              }px`,
-              transform: 'translateX(-50%)',
-              zIndex: 30,
-            }}
-            className="animate-fade-in"
-          >
-            <div className="bg-gray-800 text-white p-3 rounded-lg shadow-xl max-w-xs backdrop-blur-sm bg-opacity-90">
-              <div className="text-xs text-gray-300 mb-1">
-                {hoveredComment.isAI ? 'AI Analysis' : 'Your Note'}
-              </div>
-              <div className="text-sm">{hoveredComment.text}</div>
-              {hoveredComment.selectedText && (
-                <div className="mt-2 text-xs text-gray-300">
-                  <div className="font-semibold">Selected Text:</div>
-                  <div className="truncate">{hoveredComment.selectedText}</div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 };
 
@@ -677,6 +802,36 @@ export default function ArticleReaderPage() {
   const [newFolderName, setNewFolderName] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Load folders from localStorage after mount
+  useEffect(() => {
+    const savedFolders = localStorage.getItem('folders');
+    if (savedFolders) {
+      try {
+        const parsedFolders: Folder[] = JSON.parse(savedFolders);
+        const loadedFolders = parsedFolders.map((folder) => ({
+          ...folder,
+          articles: folder.articles.map((article) => ({
+            ...article,
+            file: dataUrlToFile(article.fileDataUrl!, article.name, 'application/pdf'),
+            timestamp: new Date(article.timestamp || Date.now()),
+            comments: article.comments.map((comment) => ({
+              ...comment,
+              timestamp: new Date(comment.timestamp),
+            })),
+          })),
+        }));
+        setFolders(loadedFolders);
+      } catch (error) {
+        console.error('Error parsing localStorage:', error);
+      }
+    }
+  }, []);
+
+  // Save folders to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('folders', JSON.stringify(folders));
+  }, [folders]);
 
   const createFolder = () => {
     if (newFolderName.trim()) {
@@ -693,12 +848,21 @@ export default function ArticleReaderPage() {
     if (!file || !selectedFolder) return;
 
     try {
+      // Convert file to data URL for persistence
+      const fileDataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+
       const newArticle: Article = {
         id: uuidv4(),
         name: file.name,
         content: '',
         comments: [],
         file,
+        fileDataUrl,
+        timestamp: new Date(),
       };
 
       setFolders((prev) =>
@@ -724,6 +888,22 @@ export default function ArticleReaderPage() {
       }
     } catch (error) {
       console.error('Error handling PDF:', error);
+    }
+  };
+
+  const handleDeleteArticle = (articleId: string) => {
+    setFolders((prev) =>
+      prev.map((folder) =>
+        folder.id === selectedFolder
+          ? {
+              ...folder,
+              articles: folder.articles.filter((article) => article.id !== articleId),
+            }
+          : folder
+      )
+    );
+    if (selectedArticle?.id === articleId) {
+      setSelectedArticle(null);
     }
   };
 
@@ -913,12 +1093,24 @@ export default function ArticleReaderPage() {
                 ?.articles.map((article) => (
                   <div
                     key={article.id}
-                    onClick={() => setSelectedArticle(article)}
-                    className="p-4 border rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+                    className="p-4 border rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 relative group"
                   >
-                    <h3 className="font-medium mb-2">{article.name}</h3>
-                    <div className="text-sm text-zinc-500">{article.content.slice(0, 100)}...</div>
-                    <div className="mt-2 text-xs text-zinc-400">{article.comments.length} comments</div>
+                    <div
+                      onClick={() => setSelectedArticle(article)}
+                      className="cursor-pointer"
+                    >
+                      <h3 className="font-medium mb-2">{article.name}</h3>
+                      <div className="text-sm text-zinc-500">{article.content.slice(0, 100)}...</div>
+                      <div className="mt-2 text-xs text-zinc-400">{article.comments.length} comments</div>
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 dark:hover:text-red-400"
+                      onClick={() => handleDeleteArticle(article.id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 ))}
             </div>
@@ -931,7 +1123,7 @@ export default function ArticleReaderPage() {
                   value={newFolderName}
                   onChange={(e) => setNewFolderName(e.target.value)}
                   placeholder="New folder name"
-                  className="flex-1 min-w-0 p-2 border rounded-lg"
+                  className="flex-1 min-w-0 p-2 border rounded-lg dark:bg-zinc-800 dark:border-zinc-600"
                   onKeyDown={(e) => e.key === 'Enter' && createFolder()}
                 />
                 <Button onClick={createFolder} className="sm:w-auto w-full">
