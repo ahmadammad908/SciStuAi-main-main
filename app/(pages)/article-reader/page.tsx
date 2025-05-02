@@ -10,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Sparkles, BookText, FileText, Menu, X, Share, XCircle, Trash2 } from 'lucide-react';
+import { Sparkles, BookText, FileText, Menu, X, Share, XCircle, Trash2, RotateCcw, MessageSquare, Brain, Upload, AlertCircle, FolderPlus } from 'lucide-react';
 import Link from 'next/link';
 import ModeToggle from '@/components/mode-toggle';
 import { Badge } from '@/components/ui/badge';
@@ -606,6 +606,7 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
                         onTouchStart={handleAddComment}
                         className="bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
                       >
+                        <MessageSquare className="w-4 h-4 mr-2" />
                         Add Note
                       </Button>
                     </TooltipTrigger>
@@ -622,6 +623,7 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
                         onTouchStart={handleAIAnalysisStart}
                         className="bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors"
                       >
+                        <Brain className="w-4 h-4 mr-2" />
                         AI Analysis
                       </Button>
                     </TooltipTrigger>
@@ -665,7 +667,7 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
               }}
               className="animate-in fade-in duration-200"
             >
-              <Card className="w-80 shadow-lg border dark:border-zinc-700 bg-white dark:bg-zinc-800">
+              <Card className=" shadow-lg border dark:border-zinc-700 bg-white dark:bg-zinc-800">
                 <CardContent className="p-4">
                   <Textarea
                     ref={textareaRef}
@@ -683,6 +685,7 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
                       onTouchStart={handleSaveComment}
                       className="bg-blue-600 hover:bg-blue-700 text-white rounded-md"
                     >
+                      <MessageSquare className="w-4 h-4 mr-2" />
                       Save
                     </Button>
                     <Button
@@ -690,8 +693,9 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
                       variant="outline"
                       onClick={handleCancelComment}
                       onTouchStart={handleCancelComment}
-                      className="border-zinc-300 dark:border-zinc-600 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-md"
+                      className="  hover:bg-red-400 bg-red-600  rounded-md"
                     >
+                       <XCircle className="w-4 h-4 mr-2" />
                       Cancel
                     </Button>
                     {pendingComment && pendingComment.isAI && (
@@ -702,6 +706,7 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
                         onTouchStart={() => handleFinalizeComment('regenerate')}
                         className="bg-yellow-600 hover:bg-yellow-700 text-white rounded-md"
                       >
+                        <RotateCcw className="w-4 h-4 mr-2" />
                         Regenerate
                       </Button>
                     )}
@@ -1060,33 +1065,42 @@ export default function ArticleReaderPage() {
 
         {selectedArticle ? (
           <div className="flex-1 p-6 overflow-hidden">
-            <Button onClick={() => setSelectedArticle(null)} variant="ghost" className="mb-4">
-              ← Back to Folder
-            </Button>
-            <div className="bg-white dark:bg-zinc-900 rounded-lg h-full">
-              <h2 className="text-xl font-bold p-6 border-b dark:border-zinc-800">{selectedArticle.name}</h2>
-              <PDFViewer article={selectedArticle} onCommentCreate={handleCommentCreate} />
-            </div>
+          <Button onClick={() => setSelectedArticle(null)} variant="ghost" className="mb-4">
+            ← Back to Folder
+          </Button>
+          <div className="bg-white dark:bg-zinc-900 rounded-lg h-full">
+            <h2 className="text-xl font-bold p-6 border-b dark:border-zinc-800">{selectedArticle.name}</h2>
+            <PDFViewer article={selectedArticle} onCommentCreate={handleCommentCreate} />
           </div>
-        ) : selectedFolder ? (
-          <div className="flex-1 p-6">
-            <Button onClick={() => setSelectedFolder(null)} variant="ghost" className="mb-4">
-              ← Back to Folders
+        </div>
+      ) : selectedFolder ? (
+        <div className="flex-1 p-6">
+          <Button onClick={() => setSelectedFolder(null)} variant="ghost" className="mb-4">
+            ← Back to Folders
+          </Button>
+          <div className="mb-6 flex items-center gap-4">
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept="application/pdf"
+              onChange={handleFileUpload}
+              className="hidden"
+              title="Upload PDF Article"
+            />
+            <Button onClick={() => fileInputRef.current?.click()}>
+              <Upload className="w-4 h-4 mr-2" />
+              Upload PDF Article
             </Button>
-            <div className="mb-6 flex items-center gap-4">
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept="application/pdf"
-                onChange={handleFileUpload}
-                className="hidden"
-                title="Upload PDF Article"
-              />
-              <Button onClick={() => fileInputRef.current?.click()}>Upload PDF Article</Button>
-              <span className="text-sm text-zinc-500">
-                {folders.find((f) => f.id === selectedFolder)?.articles.length} articles
-              </span>
+            <span className="text-sm text-zinc-500">
+              {folders.find((f) => f.id === selectedFolder)?.articles.length} articles
+            </span>
+          </div>
+          {folders.find((f) => f.id === selectedFolder)?.articles.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64">
+              <AlertCircle className="w-12 h-12 text-zinc-400 mb-4" />
+              <p className="text-lg text-zinc-500">No articles yet. Please upload.</p>
             </div>
+          ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {folders
                 .find((f) => f.id === selectedFolder)
@@ -1114,7 +1128,8 @@ export default function ArticleReaderPage() {
                   </div>
                 ))}
             </div>
-          </div>
+          )}
+        </div>
         ) : (
           <div className="flex-1 p-6">
             <div className="max-w-3xl mx-auto space-y-6">
@@ -1127,6 +1142,7 @@ export default function ArticleReaderPage() {
                   onKeyDown={(e) => e.key === 'Enter' && createFolder()}
                 />
                 <Button onClick={createFolder} className="sm:w-auto w-full">
+                <FolderPlus className="w-4 h-4 mr-2" />
                   Create Folder
                 </Button>
               </div>
