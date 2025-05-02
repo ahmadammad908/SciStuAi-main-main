@@ -34,19 +34,19 @@ const components: { title: string; href: string; description: string; icon: any 
   },
   {
     title: "Article Reader",
-    href: "/playground?tool=article-reader",
+    href: "/article-reader?tool=article-reader",
     description: "Convert and summarize articles into easy-to-understand formats.",
     icon: FileText,
   },
   {
     title: "Humanize AI",
-    href: "/playground?tool=humanize-ai",
+    href: "/humanize-ai?tool=humanize-ai",
     description: "Transform AI-generated content into natural human-like text.",
     icon: Bot,
   },
   {
     title: "Resume Analyzer",
-    href: "/playground?tool=resume-analyzer",
+    href: "/resume-analyzer?tool=resume-analyzer",
     description: "Get professional feedback and suggestions for your resume.",
     icon: ScrollText,
   },

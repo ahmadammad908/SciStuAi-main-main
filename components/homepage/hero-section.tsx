@@ -25,9 +25,9 @@ export default function HeroSection() {
 
   const features = [
     { icon: BookOpenText, label: "Homework Helper", href: "/playground?tab=homework" },
-    { icon: Newspaper, label: "Article Reader", href: "/playground?tab=article" },
-    { icon: BrainCircuit, label: "Humanize AI", href: "/playground?tab=humanize" },
-    { icon: Briefcase, label: "Resume Analyzer", href: "/playground?tab=resume" },
+    { icon: Newspaper, label: "Article Reader", href: "/article-reader?tab=article" },
+    { icon: BrainCircuit, label: "Humanize AI", href: "/humanize-ai?tab=humanize" },
+    { icon: Briefcase, label: "Resume Analyzer", href: "/resume-analyzer?tab=resume" },
   ];
 
   return (
