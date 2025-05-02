@@ -75,22 +75,40 @@ const calculatePopupPosition = (
   pageOffset: number,
   isMobile: boolean
 ) => {
-  const popupWidth = 240;
-  const popupHeight = 60;
+  const popupWidth = 240; // Width of the popup
+  const popupHeight = 60; // Height of the popup
+  const offset = 10; // Space between selection and popup
 
-  let x = selectionPosition.x + selectionPosition.width / 2 - popupWidth / 2;
-  let y = selectionPosition.y + pageOffset - popupHeight - (isMobile ? 16 : 8); // Extra offset for mobile
+  // Horizontal: Try to place the popup to the right of the selection
+  let x = selectionPosition.x + selectionPosition.width + offset;
 
-  const minX = 10;
+  // Check if the popup overflows on the right
   const maxX = containerRect.width - popupWidth - 10;
-  x = Math.max(minX, Math.min(x, maxX));
-
-  const minY = scrollTop + 10;
-  const maxY = scrollTop + containerRect.height - popupHeight - (isMobile ? 60 : 10); // Account for mobile toolbar
-  if (y < minY) {
-    y = selectionPosition.y + pageOffset + selectionPosition.height + (isMobile ? 16 : 8);
+  if (x > maxX) {
+    // Try placing it to the left of the selection
+    x = selectionPosition.x - popupWidth - offset;
+    // If left placement isn't possible, center it and clamp
+    if (x < 10) {
+      x = selectionPosition.x + selectionPosition.width / 2 - popupWidth / 2;
+      x = Math.max(10, Math.min(x, maxX));
+    }
   }
-  y = Math.max(minY, Math.min(y, maxY));
+
+  // Vertical: Try to place the popup above the selection
+  let y = selectionPosition.y + pageOffset - popupHeight - (isMobile ? 16 : 8);
+
+  // Check if the popup overflows below the container
+  const minY = scrollTop + 10;
+  const maxY = scrollTop + containerRect.height - popupHeight - (isMobile ? 60 : 10);
+  if (y + popupHeight > maxY) {
+    // Place above the selection if it would overflow below
+    y = selectionPosition.y + pageOffset - popupHeight - (isMobile ? 16 : 8);
+  }
+  if (y < minY) {
+    // If above isn't possible, place below and clamp
+    y = selectionPosition.y + pageOffset + selectionPosition.height + (isMobile ? 16 : 8);
+    y = Math.max(minY, Math.min(y, maxY));
+  }
 
   return { x, y };
 };
@@ -187,7 +205,7 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
     };
 
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showSelectionPopup]);
 
   const handleTextSelection = (event: React.MouseEvent | React.TouchEvent) => {
@@ -569,8 +587,6 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
             </div>
           )}
 
-          
-
           {showSelectionPopup && selectedText && selectionPosition && !showCommentPopup && !aiAnalysisPending && !manualCommentMode && (
             <div
               ref={popupRef}
@@ -652,7 +668,6 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
             </div>
           )}
 
-          
           {showCommentPopup && selectionPosition && (
             <div
               ref={popupRef}
@@ -660,14 +675,27 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
               onTouchStart={handlePopupClick}
               style={{
                 position: 'absolute',
-                left: `${selectionPosition.x + selectionPosition.width / 2}px`,
-                top: `${selectionPosition.y + (pageRefs.current[currentPage - 1]?.offsetTop || 0) - (isMobile ? 16 : 8)}px`,
-                transform: 'translate(-50%, -100%)',
+                left: `${calculatePopupPosition(
+                  selectionPosition,
+                  pdfContainerRef.current!.getBoundingClientRect(),
+                  pdfContainerRef.current!.scrollLeft,
+                  pdfContainerRef.current!.scrollTop,
+                  pageRefs.current[currentPage - 1]?.offsetTop || 0,
+                  isMobile
+                ).x}px`,
+                top: `${calculatePopupPosition(
+                  selectionPosition,
+                  pdfContainerRef.current!.getBoundingClientRect(),
+                  pdfContainerRef.current!.scrollLeft,
+                  pdfContainerRef.current!.scrollTop,
+                  pageRefs.current[currentPage - 1]?.offsetTop || 0,
+                  isMobile
+                ).y}px`,
                 zIndex: 20,
               }}
               className="animate-in fade-in duration-200"
             >
-              <Card className=" shadow-lg border dark:border-zinc-700 bg-white dark:bg-zinc-800">
+              <Card className="shadow-lg border dark:border-zinc-700 bg-white dark:bg-zinc-800">
                 <CardContent className="p-4">
                   <Textarea
                     ref={textareaRef}
@@ -693,9 +721,9 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
                       variant="outline"
                       onClick={handleCancelComment}
                       onTouchStart={handleCancelComment}
-                      className="  hover:bg-red-400 bg-red-600  rounded-md"
+                      className="hover:bg-red-400 bg-red-600 rounded-md"
                     >
-                       <XCircle className="w-4 h-4 mr-2" />
+                      <XCircle className="w-4 h-4 mr-2" />
                       Cancel
                     </Button>
                     {pendingComment && pendingComment.isAI && (
@@ -720,9 +748,26 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
             <div
               style={{
                 position: 'absolute',
-                left: `${selectionPosition.x + selectionPosition.width / 2}px`,
-                top: `${selectionPosition.y + (pageRefs.current[currentPage - 1]?.offsetTop || 0) - (isMobile ? 16 : 8)}px`,
-                transform: 'translate(-50%, -100%)',
+                left: `${
+                  calculatePopupPosition(
+                    selectionPosition,
+                    pdfContainerRef.current!.getBoundingClientRect(),
+                    pdfContainerRef.current!.scrollLeft,
+                    pdfContainerRef.current!.scrollTop,
+                    pageRefs.current[currentPage - 1]?.offsetTop || 0,
+                    isMobile
+                  ).x
+                }px`,
+                top: `${
+                  calculatePopupPosition(
+                    selectionPosition,
+                    pdfContainerRef.current!.getBoundingClientRect(),
+                    pdfContainerRef.current!.scrollLeft,
+                    pdfContainerRef.current!.scrollTop,
+                    pageRefs.current[currentPage - 1]?.offsetTop || 0,
+                    isMobile
+                  ).y
+                }px`,
                 zIndex: 20,
               }}
               className="animate-in fade-in duration-200"
@@ -749,13 +794,13 @@ const PDFViewer = ({ article, onCommentCreate }: PDFViewerProps) => {
             <div
               style={{
                 position: 'absolute',
-                left: `${hoveredComment.position.x + hoveredComment.position.width / 2}px`,
+                left: `${hoveredComment.position.x + hoveredComment.position.width / 1}px`,
                 top: `${
                   hoveredComment.position.y +
                   hoveredComment.position.height +
                   (pageRefs.current[hoveredComment.pageNumber! - 1]?.offsetTop || 0) + 10
                 }px`,
-                transform: 'translateX(-50%)',
+                transform: 'translateX(-10%)',
                 zIndex: 30,
                 maxWidth: '300px',
               }}
@@ -1065,71 +1110,71 @@ export default function ArticleReaderPage() {
 
         {selectedArticle ? (
           <div className="flex-1 p-6 overflow-hidden">
-          <Button onClick={() => setSelectedArticle(null)} variant="ghost" className="mb-4">
-            ← Back to Folder
-          </Button>
-          <div className="bg-white dark:bg-zinc-900 rounded-lg h-full">
-            <h2 className="text-xl font-bold p-6 border-b dark:border-zinc-800">{selectedArticle.name}</h2>
-            <PDFViewer article={selectedArticle} onCommentCreate={handleCommentCreate} />
-          </div>
-        </div>
-      ) : selectedFolder ? (
-        <div className="flex-1 p-6">
-          <Button onClick={() => setSelectedFolder(null)} variant="ghost" className="mb-4">
-            ← Back to Folders
-          </Button>
-          <div className="mb-6 flex items-center gap-4">
-            <input
-              type="file"
-              ref={fileInputRef}
-              accept="application/pdf"
-              onChange={handleFileUpload}
-              className="hidden"
-              title="Upload PDF Article"
-            />
-            <Button onClick={() => fileInputRef.current?.click()}>
-              <Upload className="w-4 h-4 mr-2" />
-              Upload PDF Article
+            <Button onClick={() => setSelectedArticle(null)} variant="ghost" className="mb-4">
+              ← Back to Folder
             </Button>
-            <span className="text-sm text-zinc-500">
-              {folders.find((f) => f.id === selectedFolder)?.articles.length} articles
-            </span>
+            <div className="bg-white dark:bg-zinc-900 rounded-lg h-full">
+              <h2 className="text-xl font-bold p-6 border-b dark:border-zinc-800">{selectedArticle.name}</h2>
+              <PDFViewer article={selectedArticle} onCommentCreate={handleCommentCreate} />
+            </div>
           </div>
-          {folders.find((f) => f.id === selectedFolder)?.articles.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64">
-              <AlertCircle className="w-12 h-12 text-zinc-400 mb-4" />
-              <p className="text-lg text-zinc-500">No articles yet. Please upload.</p>
+        ) : selectedFolder ? (
+          <div className="flex-1 p-6">
+            <Button onClick={() => setSelectedFolder(null)} variant="ghost" className="mb-4">
+              ← Back to Folders
+            </Button>
+            <div className="mb-6 flex items-center gap-4">
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept="application/pdf"
+                onChange={handleFileUpload}
+                className="hidden"
+                title="Upload PDF Article"
+              />
+              <Button onClick={() => fileInputRef.current?.click()}>
+                <Upload className="w-4 h-4 mr-2" />
+                Upload PDF Article
+              </Button>
+              <span className="text-sm text-zinc-500">
+                {folders.find((f) => f.id === selectedFolder)?.articles.length} articles
+              </span>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {folders
-                .find((f) => f.id === selectedFolder)
-                ?.articles.map((article) => (
-                  <div
-                    key={article.id}
-                    className="p-4 border rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 relative group"
-                  >
+            {folders.find((f) => f.id === selectedFolder)?.articles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64">
+                <AlertCircle className="w-12 h-12 text-zinc-400 mb-4" />
+                <p className="text-lg text-zinc-500">No articles yet. Please upload.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {folders
+                  .find((f) => f.id === selectedFolder)
+                  ?.articles.map((article) => (
                     <div
-                      onClick={() => setSelectedArticle(article)}
-                      className="cursor-pointer"
+                      key={article.id}
+                      className="p-4 border rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 relative group"
                     >
-                      <h3 className="font-medium mb-2">{article.name}</h3>
-                      <div className="text-sm text-zinc-500">{article.content.slice(0, 100)}...</div>
-                      <div className="mt-2 text-xs text-zinc-400">{article.comments.length} comments</div>
+                      <div
+                        onClick={() => setSelectedArticle(article)}
+                        className="cursor-pointer"
+                      >
+                        <h3 className="font-medium mb-2">{article.name}</h3>
+                        <div className="text-sm text-zinc-500">{article.content.slice(0, 100)}...</div>
+                        <div className="mt-2 text-xs text-zinc-400">{article.comments.length} comments</div>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 dark:hover:text-red-400"
+                        onClick={() => handleDeleteArticle(article.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-700 dark:hover:text-red-400"
-                      onClick={() => handleDeleteArticle(article.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                ))}
-            </div>
-          )}
-        </div>
+                  ))}
+              </div>
+            )}
+          </div>
         ) : (
           <div className="flex-1 p-6">
             <div className="max-w-3xl mx-auto space-y-6">
@@ -1142,7 +1187,7 @@ export default function ArticleReaderPage() {
                   onKeyDown={(e) => e.key === 'Enter' && createFolder()}
                 />
                 <Button onClick={createFolder} className="sm:w-auto w-full">
-                <FolderPlus className="w-4 h-4 mr-2" />
+                  <FolderPlus className="w-4 h-4 mr-2" />
                   Create Folder
                 </Button>
               </div>
