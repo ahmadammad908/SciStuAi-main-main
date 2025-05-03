@@ -1,26 +1,45 @@
 "use client";
-import { ArrowRight, BookOpenText, Newspaper, BrainCircuit, Briefcase, Sparkles, Search, Loader2 } from "lucide-react";
+import { ArrowRight, BookOpenText, Newspaper, BrainCircuit, Briefcase, Sparkles, Search, Loader2, ImageIcon } from "lucide-react";
 import Link from "next/link";
 import { Button } from "../ui/button";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useRef, ChangeEvent } from "react";
 
 export default function HeroSection() {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSearch = async (e: FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
       setIsLoading(true);
-      // Small delay to show loading state (you can remove this if not needed)
       await new Promise(resolve => setTimeout(resolve, 500));
-      // Navigate to homework helper with the query and auto-process flag
       router.push(`/playground?tab=homework&query=${encodeURIComponent(searchQuery)}&autoProcess=true`);
-      // Note: The loading state will reset when the component unmounts during navigation
     }
+  };
+
+  const handleImageUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsLoading(true);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          // Store the image data in session storage
+          sessionStorage.setItem('uploadedImage', event.target.result as string);
+          // Navigate to playground
+          router.push(`/playground?tab=homework&imageUpload=true`);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
   };
 
   const features = [
@@ -94,12 +113,12 @@ export default function HeroSection() {
           ))}
         </motion.div>
 
-        {/* Search Bar */}
+        {/* Search Bar and Image Upload */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.4 }}
-          className="w-full max-w-2xl mx-auto"
+          className="w-full max-w-2xl mx-auto space-y-3"
         >
           <form onSubmit={handleSearch} className="flex items-center gap-2 bg-white dark:bg-gray-900 border-2 border-blue-200 dark:border-blue-800 rounded-full px-4 py-1 focus-within:border-blue-500 transition-colors">
             <Search className="h-5 w-5 text-gray-400 ml-2" />
@@ -125,6 +144,30 @@ export default function HeroSection() {
               )}
             </Button>
           </form>
+
+          {/* Hidden file input */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImageUpload}
+            accept="image/*"
+            className="hidden"
+          />
+
+          {/* Image upload button */}
+          <Button
+            onClick={triggerFileInput}
+            variant="outline"
+            className="rounded-full bg-white dark:bg-gray-900 border-2 border-blue-200 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors w-full py-6"
+            disabled={isLoading}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <ImageIcon className="h-5 w-5 text-blue-600 dark:text-blue-300" />
+              <span className="text-sm font-medium text-blue-900 dark:text-blue-200">
+                {isLoading ? "Processing Image..." : "Upload Image for Analysis"}
+              </span>
+            </div>
+          </Button>
         </motion.div>
       </div>
     </section>

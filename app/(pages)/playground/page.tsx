@@ -17,7 +17,6 @@ import ReactMarkdown from "react-markdown";
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import { useSearchParams } from "next/navigation";
-import Image from "next/image";
 
 interface CustomMessage {
   role: "data" | "system" | "user" | "assistant";
@@ -79,20 +78,47 @@ export default function PlaygroundPage() {
     },
   });
 
+  // Handle image from HeroSection
+  useEffect(() => {
+    const imageUpload = searchParams?.get('imageUpload');
+    if (imageUpload === 'true') {
+      const imageData = sessionStorage.getItem('uploadedImage');
+      if (imageData) {
+        setImagePreview(imageData);
+        // Convert base64 to File for consistency with existing logic
+        const byteString = atob(imageData.split(',')[1]);
+        const mimeString = imageData.split(',')[0].split(':')[1].split(';')[0];
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+          ia[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([ab], { type: mimeString });
+        const file = new File([blob], 'uploaded-image.' + mimeString.split('/')[1], { type: mimeString });
+        setImageFile(file);
+        // Clear sessionStorage to prevent stale data
+        sessionStorage.removeItem('uploadedImage');
+      }
+    }
+  }, [searchParams]);
+
   // Handle auto-processing when coming from hero section
   useEffect(() => {
     if (initialQueryProcessed) return;
 
     const query = searchParams?.get('query');
     const autoProcess = searchParams?.get('autoProcess') === 'true';
+    const hasImage = !!imageFile && !!imagePreview;
 
-    if (autoProcess && query && !input && !isLoading) {
+    if ((autoProcess && (query || hasImage)) && !isLoading) {
       setIsAutoProcessing(true);
       setInitialQueryProcessed(true);
 
-      handleInputChange({
-        target: { value: query }
-      } as React.ChangeEvent<HTMLTextAreaElement>);
+      if (query) {
+        handleInputChange({
+          target: { value: query }
+        } as React.ChangeEvent<HTMLTextAreaElement>);
+      }
 
       setTimeout(() => {
         if (formRef.current) {
@@ -103,7 +129,7 @@ export default function PlaygroundPage() {
         setIsAutoProcessing(false);
       }, 300);
     }
-  }, [searchParams, initialQueryProcessed, input, isLoading]);
+  }, [searchParams, initialQueryProcessed, imageFile, imagePreview, isLoading]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -499,7 +525,7 @@ export default function PlaygroundPage() {
 
                         {(message as CustomMessage).imageUrl && (
                           <div className="rounded-[20px] overflow-hidden">
-                            <Image
+                            <img
                               src={(message as CustomMessage).imageUrl || ""}
                               alt="Uploaded content"
                               className="max-w-full h-auto max-h-64 object-contain"
@@ -565,93 +591,93 @@ export default function PlaygroundPage() {
               </div>
             </ScrollArea>
             <div className="p-4 border-t dark:border-zinc-800 border-zinc-200">
-  <form ref={formRef} onSubmit={handleFormSubmit} className="relative">
-    <div className="relative">
-      {imagePreview && (
-        <div className="relative mb-2 flex justify-center">
-          <div className="relative rounded-lg overflow-hidden max-w-full">
-            <Image
-              src={imagePreview}
-              alt="Preview"
-              className="max-w-full h-auto max-h-40 md:max-h-64 object-contain"
-            />
-            <button
-              type="button"
-              onClick={removeImage}
-               className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 shadow hover:bg-red-600 transition-colors"
-              aria-label="Remove image"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-      <div className="relative flex items-center">
-        <Textarea
-          ref={textareaRef}
-          value={input}
-          onChange={handleInputChange}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              formRef.current?.dispatchEvent(
-                new Event('submit', { bubbles: true, cancelable: true })
-              );
-            }
-          }}
-          placeholder="Ask your homework question or upload an image..."
-          className="min-h-[60px] w-full bg-transparent dark:bg-zinc-900/50 border dark:border-zinc-800 border-zinc-200 text-base pr-20 resize-none"
-          rows={1}
-        />
-        <div className="absolute right-2 bottom-2 flex gap-1">
-          <div className="flex items-center">
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleImageUpload}
-              accept="image/*"
-              id="image-upload"
-              className="hidden"
-            />
-            <label
-              htmlFor="image-upload"
-              className="h-8 w-8 p-0 flex items-center justify-center rounded-md bg-white hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 cursor-pointer transition-colors"
-              title="Upload image"
-              aria-label="Upload image"
-            >
-              {isImageUploading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <ImageIcon className="w-4 h-4" />
-              )}
-            </label>
-          </div>
-          <Button
-            type="submit"
-            size="icon"
-            className="h-8 w-8"
-            disabled={isLoading || (!input.trim() && !imageFile) || isAutoProcessing}
-          >
-            {isAutoProcessing || isImageUploading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <ArrowUp className="w-4 h-4" />
-            )}
-          </Button>
-        </div>
-      </div>
-    </div>
-    {uploadError && (
-      <div className="mt-2 text-red-500 text-sm">
-        {uploadError}
-      </div>
-    )}
-  </form>
-</div>
+              <form ref={formRef} onSubmit={handleFormSubmit} className="relative">
+                <div className="relative">
+                  {imagePreview && (
+                    <div className="relative mb-2 flex justify-center">
+                      <div className="relative max-w-full">
+                        <img
+                          src={imagePreview}
+                          alt="Preview"
+                          className="max-w-full h-auto max-h-40 md:max-h-64 object-contain rounded-lg"
+                        />
+                        <button
+                          type="button"
+                          onClick={removeImage}
+                          className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 shadow hover:bg-red-600 transition-colors"
+                          aria-label="Remove image"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="relative flex items-center">
+                    <Textarea
+                      ref={textareaRef}
+                      value={input}
+                      onChange={handleInputChange}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          formRef.current?.dispatchEvent(
+                            new Event('submit', { bubbles: true, cancelable: true })
+                          );
+                        }
+                      }}
+                      placeholder="Ask your homework question or upload an image..."
+                      className="min-h-[60px] w-full bg-transparent dark:bg-zinc-900/50 border dark:border-zinc-800 border-zinc-200 text-base pr-20 resize-none"
+                      rows={1}
+                    />
+                    <div className="absolute right-2 bottom-2 flex gap-1">
+                      <div className="flex items-center">
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          onChange={handleImageUpload}
+                          accept="image/*"
+                          id="image-upload"
+                          className="hidden"
+                        />
+                        <label
+                          htmlFor="image-upload"
+                          className="h-8 w-8 p-0 flex items-center justify-center rounded-md bg-white hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 cursor-pointer transition-colors"
+                          title="Upload image"
+                          aria-label="Upload image"
+                        >
+                          {isImageUploading ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <ImageIcon className="w-4 h-4" />
+                          )}
+                        </label>
+                      </div>
+                      <Button
+                        type="submit"
+                        size="icon"
+                        className="h-8 w-8"
+                        disabled={isLoading || (!input.trim() && !imageFile) || isAutoProcessing || isImageUploading}
+                      >
+                        {isAutoProcessing || isImageUploading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <ArrowUp className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+                {uploadError && (
+                  <div className="mt-2 text-red-500 text-sm">
+                    {uploadError}
+                  </div>
+                )}
+              </form>
+            </div>
           </div>
 
           {/* Settings */}
-          <aside className="w-full md:w-80 border-t md:border-t-0 md:border-l dark:border-zinc-800 border-zinc-200 ">
+          <aside className="w-full md:w-80 border-t md:border-t-0 md:border-l dark:border-zinc-800 border-zinc-200">
             <Tabs defaultValue="model" className="h-full flex flex-col">
               <TabsList className="w-full dark:bg-zinc-900/50 bg-zinc-100 border dark:border-zinc-800 border-zinc-200">
                 <TabsTrigger value="model" className="flex-1 text-xs sm:text-sm">Model</TabsTrigger>
