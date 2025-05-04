@@ -549,22 +549,10 @@ export default function HumanizeAIPage() {
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </Button>
             <h2 className="text-lg font-medium capitalize truncate">Humanize AI</h2>
-            <Badge variant="outline" className="text-xs truncate">
-              Text Converter
-            </Badge>
+        
           </div>
           <div className="flex items-center gap-2">
-            <select
-              value={theme}
-              onChange={(e) => setTheme(e.target.value as "default" | "blue" | "green" | "purple")}
-              className="text-sm border rounded-md px-2 py-1 bg-white dark:bg-zinc-800"
-              aria-label="Select theme"
-            >
-              <option value="default">Default</option>
-              <option value="blue">Blue</option>
-              <option value="green">Green</option>
-              <option value="purple">Purple</option>
-            </select>
+            
             <Button
               variant="outline"
               size="sm"
