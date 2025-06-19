@@ -380,19 +380,7 @@ export default function HumanizeAIPage() {
     return (
       <div className="relative border rounded-lg p-6 bg-white dark:bg-zinc-900 h-80 shadow-lg ">
         <div className="absolute top-2 right-4 flex gap-2 ">
-          <select
-            value={exportFormat}
-            onChange={(e) => setExportFormat(e.target.value as "text" | "markdown" | "html" | "pdf" | "json")}
-            className="text-sm border rounded-md px-2 py-1 bg-white dark:bg-zinc-800"
-            aria-label="Select export format"
-          >
-            <option value="markdown">Markdown</option>
-            <option value="html">HTML</option>
-            <option value="text">Plain Text</option>
-            <option value="pdf">PDF</option>
-            <option value="json">JSON</option>
-          </select>
-          {(result || streamedText) && !isHumanizing && (
+                  {(result || streamedText) && !isHumanizing && (
             <>
               <Button
                 size="sm"
@@ -408,16 +396,7 @@ export default function HumanizeAIPage() {
                 )}
                 {previewCopied ? "Copied!" : "Copy"}
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleExport(textToDisplay)}
-                className="h-8"
-                aria-label="Export humanized text"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export
-              </Button>
+              
             </>
           )}
         </div>

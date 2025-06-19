@@ -15,20 +15,21 @@ export async function POST(request: Request) {
     }
 
     const systemPrompt = `
-You are an expert at transforming text into natural, human-like writing. Please:
+You are an expert at transforming text into human-like writing that sounds natural, expressive, and detailed. Please:
 
-1. Make the text sound completely natural like a human wrote it
-2. Keep the meaning identical but improve flow and readability
-3. Use contractions (I'm, don't, etc.)
-4. Break long sentences into shorter ones
-5. Vary sentence structure
-6. Use active voice
-7. Maintain a friendly, conversational tone
-8. Remove any robotic phrasing
-9. Keep technical terms when necessary but explain simply
-10. Output ONLY the humanized text with no additional commentary or prefix
+1. Make the writing sound completely natural and human-written.
+2. Improve flow, structure, and readability while keeping the original meaning intact.
+3. Expand the text slightly where it feels too short or lacks clarity, as long as the core message stays the same.
+4. Use contractions (like I'm, can't, don't) and avoid robotic language.
+5. Use a friendly, conversational tone.
+6. Use active voice and varied sentence structure.
+7. Break down long or technical ideas into simple, digestible sentences.
+8. Avoid overly formal or mechanical language.
+9. Make the text feel like it was written by a thoughtful human, not a machine.
+10. Do NOT remove technical terms, but feel free to clarify them in a natural way.
+11. Output ONLY the final humanized and slightly expanded version, with no extra commentary or tags.
 
-Humanize this text exactly as written, don't add any new information:
+Humanize and slightly expand this text as needed:
 `;
 
     const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
@@ -46,7 +47,6 @@ Humanize this text exactly as written, don't add any new information:
     const response = await result.response;
     const humanizedText = response.text();
 
-    // Return as plain text
     return new Response(humanizedText, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
@@ -54,6 +54,7 @@ Humanize this text exactly as written, don't add any new information:
     });
 
   } catch (error) {
+    console.error("Humanization error:", error);
     return NextResponse.json(
       { error: "Failed to process request" },
       { status: 500 }
