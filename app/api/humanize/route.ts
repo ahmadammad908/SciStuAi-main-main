@@ -1,7 +1,4 @@
-import { groq } from "@ai-sdk/groq";
-import { streamText } from "ai";
-import { experimental_wrapLanguageModel as wrapLanguageModel } from "ai";
-import { extractReasoningMiddleware } from "ai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
 export const maxDuration = 30;
@@ -18,43 +15,39 @@ export async function POST(request: Request) {
     }
 
     const systemPrompt = `
-You are an advanced AI text humanizer. Transform AI-generated content into natural, human-like text while preserving the original meaning. Follow these guidelines:
+You are an expert at transforming text into natural, human-like writing. Please:
 
-1. Use conversational language
-2. Break long sentences into shorter ones
-3. Use contractions where appropriate
-4. Maintain technical accuracy
-5. Keep paragraphs concise
-6. Vary sentence structure
-7. Use active voice
-8. Ensure readability (8th-10th grade level)
+1. Make the text sound completely natural like a human wrote it
+2. Keep the meaning identical but improve flow and readability
+3. Use contractions (I'm, don't, etc.)
+4. Break long sentences into shorter ones
+5. Vary sentence structure
+6. Use active voice
+7. Maintain a friendly, conversational tone
+8. Remove any robotic phrasing
+9. Keep technical terms when necessary but explain simply
+10. Output ONLY the humanized text with no additional commentary or prefix
+
+Humanize this text exactly as written, don't add any new information:
 `;
 
-    const enhancedModel = wrapLanguageModel({
-      model: groq("deepseek-r1-distill-llama-70b"),
-      middleware: extractReasoningMiddleware({ tagName: "humanize-process" }),
-    });
+    const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    const result = await streamText({
-      model: enhancedModel,
-      messages: [{
-        role: "user",
-        content: `Humanize this text:\n\n${text}`
-      }],
-      system: systemPrompt,
-    });
-
-    // Create clean streaming response
-    const stream = new ReadableStream({
-      async start(controller) {
-        for await (const delta of result.textStream) {
-          controller.enqueue(new TextEncoder().encode(delta));
+    const result = await model.generateContent({
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: `${systemPrompt}${text}` }]
         }
-        controller.close();
-      }
+      ]
     });
 
-    return new Response(stream, {
+    const response = await result.response;
+    const humanizedText = response.text();
+
+    // Return as plain text
+    return new Response(humanizedText, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
       }
