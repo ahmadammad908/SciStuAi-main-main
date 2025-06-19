@@ -519,7 +519,29 @@ export default function PlaygroundPage() {
                       <div className="flex flex-col gap-2 max-w-[480px]">
                         <div className={`flex items-center gap-2 ${message.role === "assistant" ? "justify-start" : "justify-end"}`}>
                           <span className={`text-xs font-medium ${message.role === "assistant" ? "text-blue-500" : "text-green-500"}`}>
-                            {message.role === "assistant" ? "Assistant" : "You"}
+                            {message.role === "assistant" ? (
+                              <span className="flex items-center gap-1">
+                                <span className="inline-block bg-blue-100 dark:bg-blue-900 rounded-full p-1 mr-1">
+                                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                                    <rect x="4" y="6" width="12" height="8" rx="4" fill="#3B82F6"/>
+                                    <rect x="7" y="2" width="6" height="4" rx="2" fill="#3B82F6"/>
+                                    <circle cx="7.5" cy="10" r="1" fill="white"/>
+                                    <circle cx="12.5" cy="10" r="1" fill="white"/>
+                                  </svg>
+                                </span>
+                                Assistant
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1">
+                                <span className="inline-block bg-green-100 dark:bg-green-900 rounded-full p-1 mr-1">
+                                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                                    <circle cx="10" cy="7" r="4" fill="#22C55E"/>
+                                    <rect x="4" y="12" width="12" height="5" rx="2.5" fill="#22C55E"/>
+                                  </svg>
+                                </span>
+                                You
+                              </span>
+                            )}
                           </span>
                         </div>
 
